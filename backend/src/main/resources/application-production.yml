@@ -1,0 +1,19 @@
+spring:
+  datasource:
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+clec:
+  auth:
+    master:
+      username: ${CLEC_MASTER_USERNAME}
+      password: ${CLEC_MASTER_PASSWORD}
+      display-name: ${CLEC_MASTER_DISPLAY_NAME}
+
+server:
+  servlet:
+    session:
+      cookie:
+        secure: true
