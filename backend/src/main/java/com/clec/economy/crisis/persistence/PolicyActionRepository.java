@@ -6,4 +6,5 @@ import java.util.List;
 public interface PolicyActionRepository extends JpaRepository<PolicyActionEntity, String> {
     List<PolicyActionEntity> findBySessionIdAndActivationTickLessThanEqualAndEndTickGreaterThanEqual(
             String sessionId, long activationTick, long endTick);
+    List<PolicyActionEntity> findBySourceDirectiveIdOrderByCreatedAtDesc(String sourceDirectiveId);
 }

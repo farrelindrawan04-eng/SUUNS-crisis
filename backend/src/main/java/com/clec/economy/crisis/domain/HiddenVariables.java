@@ -1,5 +1,7 @@
 package com.clec.economy.crisis.domain;
 
+import java.util.Map;
+
 public class HiddenVariables {
     private double bankLiquidity;
     private double bankCapital;
@@ -48,6 +50,17 @@ public class HiddenVariables {
                 externalFinancingAccess + financing,
                 depositWithdrawalPressure + withdrawals
         );
+    }
+
+    public HiddenVariables adjusted(Map<String, Double> delta) {
+        return adjusted(value(delta, "bankLiquidity"), value(delta, "bankCapital"),
+                value(delta, "foreignReserves"), value(delta, "fiscalCapacity"),
+                value(delta, "infrastructureLoanHealth"), value(delta, "importDistributionCapacity"),
+                value(delta, "externalFinancingAccess"), value(delta, "depositWithdrawalPressure"));
+    }
+
+    private double value(Map<String, Double> delta, String key) {
+        return delta == null ? 0.0 : delta.getOrDefault(key, 0.0);
     }
 
     private static double requireFinite(double value) {

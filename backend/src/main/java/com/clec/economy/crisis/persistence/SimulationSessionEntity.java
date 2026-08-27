@@ -34,6 +34,9 @@ public class SimulationSessionEntity {
     @Column(name = "engine_version", nullable = false, length = 40)
     private String engineVersion;
 
+    @Column(name = "track_id", length = 36)
+    private String trackId;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -44,6 +47,10 @@ public class SimulationSessionEntity {
     }
 
     public SimulationSessionEntity(String id, String name, long deterministicSeed, Instant now) {
+        this(id, name, deterministicSeed, null, now);
+    }
+
+    public SimulationSessionEntity(String id, String name, long deterministicSeed, String trackId, Instant now) {
         this.id = id;
         this.name = name;
         this.status = SessionStatus.READY;
@@ -51,6 +58,7 @@ public class SimulationSessionEntity {
         this.tickMinutes = 5;
         this.deterministicSeed = deterministicSeed;
         this.engineVersion = "0.1.0";
+        this.trackId = trackId;
         this.createdAt = now;
         this.updatedAt = now;
     }
@@ -62,6 +70,7 @@ public class SimulationSessionEntity {
     public int getTickMinutes() { return tickMinutes; }
     public long getDeterministicSeed() { return deterministicSeed; }
     public String getEngineVersion() { return engineVersion; }
+    public String getTrackId() { return trackId; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 

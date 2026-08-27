@@ -41,4 +41,6 @@ public class StaffUserEntity {
     public StaffRole getRole() { return role; }
     public boolean isEnabled() { return enabled; }
     public Instant getCreatedAt() { return createdAt; }
+    public String getCreatedBy() { return createdBy; }
+    public void disable() { enabled = false; }
 }

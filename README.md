@@ -47,6 +47,24 @@ password: master-change-me
 
 The master can open **Manage staff** and create staff accounts. Staff accounts can use the simulator but cannot list or create accounts.
 
+Staff and master accounts can also open the **Directive management** workspace for the active session. It supports delegate profile creation, card-based action tracking, status management, and threaded responses. Delegate accounts sign into the same web application and land on a dedicated desk where they can submit directives and reply to staff. Both feeds refresh every four seconds.
+
+Delegate operations endpoints:
+
+- `GET|POST /api/operations/sessions/{sessionId}/delegates`
+- `GET /api/operations/sessions/{sessionId}/directives`
+- `PUT /api/operations/directives/{directiveId}/status`
+- `POST /api/operations/directives/{directiveId}/responses`
+- `GET|POST /api/operations/delegate/directives`
+- `POST /api/operations/delegate/directives/{directiveId}/messages`
+
+### Public situation feed
+
+Staff can create persistent situation cards as drafts or publish them to every authenticated delegate in the
+session. Cards have a category, severity, lifecycle (`DRAFT`, `PUBLISHED`, `ARCHIVED`), author, and timestamps.
+Published changes are pushed immediately over server-sent events at
+`GET /api/feed/sessions/{sessionId}/stream`; reconnecting clients restore the feed from the REST endpoint.
+
 Override the bootstrap identity before the first startup with `CLEC_MASTER_USERNAME`, `CLEC_MASTER_PASSWORD`, and `CLEC_MASTER_DISPLAY_NAME`. The production profile requires all three variables and does not provide defaults.
 
 ## Frontend
@@ -61,7 +79,26 @@ npm run dev
 
 Open the Vite URL, normally `http://localhost:5173`.
 
+The active simulation ID is retained in browser storage across sign-out so staff can reconnect to the
+same persisted session after using a delegate account. **Choose another track** intentionally clears that
+selection; it does not delete the database session.
+
 Requires Node.js and npm.
+
+## Packaged deployment
+
+The repository includes production containers for PostgreSQL, Spring Boot, and the Nginx-served React client.
+Nginx proxies `/api` to Spring, including the server-sent event feed, so production browser traffic stays
+same-origin.
+
+```bash
+cp .env.example .env
+# Replace every placeholder secret in .env, then:
+docker compose up --build
+```
+
+Open `http://localhost:8088` by default. Set `SUUNS_PORT` and `CLEC_ALLOWED_ORIGIN` together when exposing a
+different origin. PostgreSQL data is retained in the named `suuns-postgres` volume.
 
 ## Current Crisis Model
 

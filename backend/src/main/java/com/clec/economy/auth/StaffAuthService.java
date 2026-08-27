@@ -77,10 +77,45 @@ public class StaffAuthService implements UserDetailsService, CommandLineRunner {
         return new AuthUserResponse(repository.save(staff));
     }
 
+    @Transactional
+    public StaffUserEntity createDelegate(String usernameValue, String displayName, String password,
+                                          String creatorUsername) {
+        String username = normalize(usernameValue);
+        require(!username.isBlank(), "username is required");
+        require(displayName != null && !displayName.isBlank(), "displayName is required");
+        require(!repository.existsByUsernameIgnoreCase(username), "username already exists");
+        validatePassword(password);
+        StaffUserEntity creator = find(creatorUsername);
+        return repository.save(new StaffUserEntity(UUID.randomUUID().toString(), username,
+                displayName.trim(), passwordEncoder.encode(password), StaffRole.DELEGATE,
+                true, creator.getId(), Instant.now()));
+    }
+
     @Transactional(readOnly = true)
     public List<AuthUserResponse> listStaff() {
         return repository.findAllByOrderByCreatedAtAsc().stream()
+                .filter(StaffUserEntity::isEnabled)
                 .map(AuthUserResponse::new).collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public StaffUserEntity findById(String id) {
+        return repository.findById(id).orElseThrow(() -> new UsernameNotFoundException("Account not found"));
+    }
+
+    @Transactional
+    public void deactivateStaff(String id, String actorUsername) {
+        StaffUserEntity actor=find(actorUsername); StaffUserEntity target=findById(id);
+        require(!actor.getId().equals(target.getId()), "you cannot delete your own account");
+        require(target.getRole()==StaffRole.STAFF, "only staff accounts can be deleted here");
+        target.disable(); repository.save(target);
+    }
+
+    @Transactional
+    public void deactivateDelegate(String id) {
+        StaffUserEntity target=findById(id);
+        require(target.getRole()==StaffRole.DELEGATE, "account is not a delegate");
+        target.disable(); repository.save(target);
     }
 
     private void validatePassword(String password) {

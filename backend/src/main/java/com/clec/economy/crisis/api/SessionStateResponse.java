@@ -2,6 +2,7 @@ package com.clec.economy.crisis.api;
 
 import com.clec.economy.crisis.domain.EngineState;
 import com.clec.economy.crisis.persistence.SessionStatus;
+import com.clec.economy.crisis.track.ScenarioTrack;
 
 public class SessionStateResponse {
     private final String id;
@@ -10,15 +11,17 @@ public class SessionStateResponse {
     private final long deterministicSeed;
     private final String engineVersion;
     private final EngineState state;
+    private final ScenarioTrack track;
 
     public SessionStateResponse(String id, String name, SessionStatus status, long deterministicSeed,
-                                String engineVersion, EngineState state) {
+                                String engineVersion, EngineState state, ScenarioTrack track) {
         this.id = id;
         this.name = name;
         this.status = status;
         this.deterministicSeed = deterministicSeed;
         this.engineVersion = engineVersion;
         this.state = state;
+        this.track = track;
     }
 
     public String getId() { return id; }
@@ -27,4 +30,5 @@ public class SessionStateResponse {
     public long getDeterministicSeed() { return deterministicSeed; }
     public String getEngineVersion() { return engineVersion; }
     public EngineState getState() { return state; }
+    public ScenarioTrack getTrack() { return track; }
 }

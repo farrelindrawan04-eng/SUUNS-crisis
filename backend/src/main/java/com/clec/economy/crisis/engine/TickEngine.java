@@ -5,6 +5,7 @@ import com.clec.economy.crisis.domain.EngineState;
 import com.clec.economy.crisis.domain.HiddenVariables;
 import com.clec.economy.crisis.domain.PolicyAction;
 import com.clec.economy.crisis.domain.PublicIndicators;
+import com.clec.economy.crisis.track.ScenarioTrack;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -14,8 +15,14 @@ import java.util.stream.Collectors;
 
 @Component
 public class TickEngine {
+    private final TrackEngine trackEngine;
+
+    public TickEngine(TrackEngine trackEngine) {
+        this.trackEngine = trackEngine;
+    }
+
     public TickResult advance(EngineState current, int tickMinutes, List<PolicyAction> policies,
-                              List<CrisisEvent> events) {
+                              List<CrisisEvent> events, ScenarioTrack track) {
         long nextTick = current.getTick() + 1;
         List<PolicyAction> activePolicies = policies.stream()
                 .filter(policy -> policy.isActive(nextTick))
@@ -28,6 +35,10 @@ public class TickEngine {
         HiddenVariables hidden = current.getHiddenVariables();
 
         log.add(stage(TickStage.ACTIVATE_EVENTS, activeEvents.size() + " event(s) active"));
+        TrackEngine.TrackApplication trackApplication = trackEngine.apply(current, track, nextTick);
+        visible = trackApplication.getPublicIndicators();
+        hidden = trackApplication.getHiddenVariables();
+        log.add(trackApplication.getCausalRecord());
         log.add(stage(TickStage.ACTIVATE_DELAYED_POLICIES, activePolicies.size() + " policy action(s) active"));
 
         double fiscalCost = activePolicies.stream()

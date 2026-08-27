@@ -8,6 +8,7 @@ import com.clec.economy.crisis.api.SubmitPolicyRequest;
 import com.clec.economy.crisis.api.TickAdvanceResponse;
 import com.clec.economy.crisis.domain.BaselineStateFactory;
 import com.clec.economy.crisis.domain.EngineState;
+import com.clec.economy.crisis.track.ScenarioTrack;
 import com.clec.economy.crisis.engine.CausalRecord;
 import com.clec.economy.crisis.engine.TickEngine;
 import com.clec.economy.crisis.engine.TickResult;
@@ -25,6 +26,7 @@ import com.clec.economy.crisis.persistence.TickEntity;
 import com.clec.economy.crisis.persistence.TickRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.clec.economy.auth.StaffAuthService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,12 +48,15 @@ public class CrisisSessionService {
     private final CrisisEventRepository eventRepository;
     private final CausalEntryRepository causalRepository;
     private final TickEngine tickEngine;
+    private final ScenarioTrackService trackService;
     private final ObjectMapper objectMapper;
+    private final StaffAuthService authService;
 
     public CrisisSessionService(SimulationSessionRepository sessionRepository, TickRepository tickRepository,
                                 StateSnapshotRepository snapshotRepository, PolicyActionRepository policyRepository,
                                 CrisisEventRepository eventRepository, CausalEntryRepository causalRepository,
-                                TickEngine tickEngine, ObjectMapper objectMapper) {
+                                TickEngine tickEngine, ScenarioTrackService trackService, ObjectMapper objectMapper,
+                                StaffAuthService authService) {
         this.sessionRepository = sessionRepository;
         this.tickRepository = tickRepository;
         this.snapshotRepository = snapshotRepository;
@@ -59,7 +64,9 @@ public class CrisisSessionService {
         this.eventRepository = eventRepository;
         this.causalRepository = causalRepository;
         this.tickEngine = tickEngine;
+        this.trackService = trackService;
         this.objectMapper = objectMapper;
+        this.authService = authService;
     }
 
     @Transactional
@@ -67,6 +74,8 @@ public class CrisisSessionService {
         String name = request.getName() == null || request.getName().isBlank()
                 ? "Untitled crisis session" : request.getName().trim();
         long seed = request.getSeed() == null ? 1L : request.getSeed();
+        require(request.getTrackId() != null && !request.getTrackId().isBlank(), "trackId is required");
+        ScenarioTrack track = trackService.require(request.getTrackId());
         String sessionId = UUID.randomUUID().toString();
         String tickId = UUID.randomUUID().toString();
         Instant now = Instant.now();
@@ -74,12 +83,12 @@ public class CrisisSessionService {
         String json = writeState(state);
         String hash = sha256(json);
 
-        SimulationSessionEntity session = new SimulationSessionEntity(sessionId, name, seed, now);
+        SimulationSessionEntity session = new SimulationSessionEntity(sessionId, name, seed, track.getId(), now);
         sessionRepository.save(session);
         tickRepository.save(new TickEntity(tickId, sessionId, seed, hash, now));
         snapshotRepository.save(new StateSnapshotEntity(
                 UUID.randomUUID().toString(), sessionId, tickId, json, hash, now));
-        return response(session, state);
+        return response(session, state, track);
     }
 
     @Transactional(readOnly = true)
@@ -88,11 +97,24 @@ public class CrisisSessionService {
                 .orElseThrow(() -> new EntityNotFoundException("Session not found: " + sessionId));
         StateSnapshotEntity snapshot = snapshotRepository.findFirstBySessionIdOrderByTickNumberDesc(sessionId)
                 .orElseThrow(() -> new IllegalStateException("Session has no state snapshot"));
-        return response(session, readState(snapshot.getStateJson()));
+        ScenarioTrack track = session.getTrackId() == null ? null : trackService.require(session.getTrackId());
+        return response(session, readState(snapshot.getStateJson()), track);
+    }
+
+    @Transactional(readOnly = true)
+    public List<SessionStateResponse> list() {
+        return sessionRepository.findAllByOrderByUpdatedAtDesc().stream()
+                .map(session -> {
+                    StateSnapshotEntity snapshot = snapshotRepository
+                            .findFirstBySessionIdOrderByTickNumberDesc(session.getId())
+                            .orElseThrow(() -> new IllegalStateException("Session has no state snapshot"));
+                    ScenarioTrack track = session.getTrackId() == null ? null : trackService.require(session.getTrackId());
+                    return response(session, readState(snapshot.getStateJson()), track);
+                }).collect(Collectors.toList());
     }
 
     @Transactional
-    public CommandAcceptedResponse submitPolicy(String sessionId, SubmitPolicyRequest request) {
+    public CommandAcceptedResponse submitPolicy(String sessionId, SubmitPolicyRequest request, String username) {
         SimulationSessionEntity session = requireSession(sessionId);
         require(request.getActionType() != null, "actionType is required");
         require(request.getAuthority() != null && !request.getAuthority().isBlank(), "authority is required");
@@ -109,7 +131,7 @@ public class CrisisSessionService {
         policyRepository.save(new PolicyActionEntity(id, sessionId, request.getActionType(),
                 request.getAuthority().trim(), request.getScale(), request.getResourceCommitment(),
                 request.getCredibility(), request.getCoverage(), session.getCurrentTick(), activation, end,
-                request.getConditions(), request.getSourceDirectiveId(), Instant.now()));
+                request.getConditions(), request.getSourceDirectiveId(), authService.find(username).getId(), Instant.now()));
         return new CommandAcceptedResponse(id, activation, end);
     }
 
@@ -143,7 +165,8 @@ public class CrisisSessionService {
                 .findBySessionIdAndActivationTickLessThanEqualAndEndTickGreaterThanEqual(sessionId, nextTick, nextTick)
                 .stream().map(CrisisEventEntity::toDomain).collect(Collectors.toList());
 
-        TickResult result = tickEngine.advance(current, session.getTickMinutes(), policies, events);
+        ScenarioTrack track = trackService.require(session.getTrackId());
+        TickResult result = tickEngine.advance(current, session.getTickMinutes(), policies, events, track);
         String json = writeState(result.getState());
         String hash = sha256(json);
         String tickId = UUID.randomUUID().toString();
@@ -161,7 +184,7 @@ public class CrisisSessionService {
         }
         session.commitTick(nextTick, now);
         sessionRepository.save(session);
-        return new TickAdvanceResponse(response(session, result.getState()), result.getCausalRecords());
+        return new TickAdvanceResponse(response(session, result.getState(), track), result.getCausalRecords());
     }
 
     private SimulationSessionEntity requireSession(String sessionId) {
@@ -185,9 +208,9 @@ public class CrisisSessionService {
         require(Double.isFinite(value) && value >= 0 && value <= 1, field + " must be between 0 and 1");
     }
 
-    private SessionStateResponse response(SimulationSessionEntity session, EngineState state) {
+    private SessionStateResponse response(SimulationSessionEntity session, EngineState state, ScenarioTrack track) {
         return new SessionStateResponse(session.getId(), session.getName(), session.getStatus(),
-                session.getDeterministicSeed(), session.getEngineVersion(), state);
+                session.getDeterministicSeed(), session.getEngineVersion(), state, track);
     }
 
     private String writeState(EngineState state) {

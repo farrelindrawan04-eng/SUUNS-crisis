@@ -1,5 +1,7 @@
 package com.clec.economy.crisis.domain;
 
+import java.util.Map;
+
 public class PublicIndicators {
     private double bankingStability;
     private double currencyStrength;
@@ -53,6 +55,18 @@ public class PublicIndicators {
                 pricePressure + prices,
                 householdPurchasingPower + purchasingPower
         );
+    }
+
+    public PublicIndicators adjusted(Map<String, Double> delta) {
+        return adjusted(value(delta, "bankingStability"), value(delta, "currencyStrength"),
+                value(delta, "economicActivity"), value(delta, "essentialSupplySecurity"),
+                value(delta, "sovereignCreditworthiness"), value(delta, "publicConfidence"),
+                value(delta, "civilUnrest"), value(delta, "pricePressure"),
+                value(delta, "householdPurchasingPower"));
+    }
+
+    private double value(Map<String, Double> delta, String key) {
+        return delta == null ? 0.0 : delta.getOrDefault(key, 0.0);
     }
 
     private static double bounded(double value) {

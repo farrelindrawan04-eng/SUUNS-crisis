@@ -9,6 +9,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -66,5 +68,11 @@ public class AuthController {
     @ResponseStatus(HttpStatus.CREATED)
     public AuthUserResponse createStaff(@RequestBody CreateStaffRequest request, Authentication authentication) {
         return staffAuthService.createStaff(request, authentication.getName());
+    }
+
+    @DeleteMapping("/staff/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteStaff(@PathVariable String id, Authentication authentication) {
+        staffAuthService.deactivateStaff(id, authentication.getName());
     }
 }

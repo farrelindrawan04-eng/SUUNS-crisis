@@ -9,6 +9,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.Authentication;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/crisis/sessions")
@@ -25,6 +28,11 @@ public class CrisisSessionController {
         return sessionService.create(request);
     }
 
+    @GetMapping
+    public List<SessionStateResponse> list() {
+        return sessionService.list();
+    }
+
     @GetMapping("/{sessionId}")
     public SessionStateResponse get(@PathVariable String sessionId) {
         return sessionService.get(sessionId);
@@ -33,8 +41,9 @@ public class CrisisSessionController {
     @PostMapping("/{sessionId}/policies")
     @ResponseStatus(HttpStatus.CREATED)
     public CommandAcceptedResponse submitPolicy(@PathVariable String sessionId,
-                                                 @RequestBody SubmitPolicyRequest request) {
-        return sessionService.submitPolicy(sessionId, request);
+                                                 @RequestBody SubmitPolicyRequest request,
+                                                 Authentication authentication) {
+        return sessionService.submitPolicy(sessionId, request, authentication.getName());
     }
 
     @PostMapping("/{sessionId}/events")
