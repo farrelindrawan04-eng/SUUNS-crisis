@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+RUN_DIR="$ROOT/.run"
+BACKEND_PID="$RUN_DIR/backend.pid"
+FRONTEND_PID="$RUN_DIR/frontend.pid"
+BACKEND_LOG="$RUN_DIR/backend.log"
+FRONTEND_LOG="$RUN_DIR/frontend.log"
+BUNDLED_BIN="$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback"
+BUNDLED_NODE="$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin"
+
+mkdir -p "$RUN_DIR"
+
+is_running() {
+  [ -f "$1" ] && kill -0 "$(cat "$1")" 2>/dev/null
+}
+
+stop_pid() {
+  local file="$1"
+  if is_running "$file"; then
+    kill "$(cat "$file")" 2>/dev/null || true
+  fi
+  rm -f "$file"
+}
+
+wait_for_port() {
+  local port="$1" name="$2"
+  for _ in $(seq 1 30); do
+    if lsof -ti "tcp:$port" >/dev/null 2>&1; then return 0; fi
+    sleep 1
+  done
+  echo "$name did not become ready. Run ./suuns logs for details."
+  return 1
+}
+
+start_all() {
+  if ! is_running "$BACKEND_PID"; then
+    if lsof -ti tcp:8081 >/dev/null 2>&1; then
+      echo "Port 8081 is already in use. Run ./suuns stop first."
+      exit 1
+    fi
+    echo "Starting backend..."
+    nohup bash -c "cd '$ROOT' && exec java -jar backend/build/libs/backend-0.1.0.jar --server.port=8081" </dev/null >"$BACKEND_LOG" 2>&1 &
+    echo $! >"$BACKEND_PID"
+  fi
+
+  if ! is_running "$FRONTEND_PID"; then
+    if lsof -ti tcp:5173 >/dev/null 2>&1; then
+      echo "Port 5173 is already in use. Run ./suuns stop first."
+      exit 1
+    fi
+    echo "Starting frontend..."
+    if command -v pnpm >/dev/null 2>&1; then
+      nohup bash -c "cd '$ROOT/frontend' && exec pnpm run dev -- --host 127.0.0.1" </dev/null >"$FRONTEND_LOG" 2>&1 &
+      echo $! >"$FRONTEND_PID"
+    elif [ -x "$BUNDLED_BIN/pnpm" ] && [ -x "$BUNDLED_NODE/node" ]; then
+      nohup bash -c "cd '$ROOT/frontend' && exec env PATH='$BUNDLED_NODE:$BUNDLED_BIN:$PATH' pnpm run dev -- --host 127.0.0.1" </dev/null >"$FRONTEND_LOG" 2>&1 &
+      echo $! >"$FRONTEND_PID"
+    elif command -v npm >/dev/null 2>&1; then
+      nohup bash -c "cd '$ROOT/frontend' && exec npm run dev -- --host 127.0.0.1" </dev/null >"$FRONTEND_LOG" 2>&1 &
+      echo $! >"$FRONTEND_PID"
+    else
+      stop_pid "$BACKEND_PID"
+      echo "Node.js is not available. Install Node.js, then try again."
+      exit 1
+    fi
+  fi
+
+  wait_for_port 8081 "Backend"
+  wait_for_port 5173 "Frontend"
+  status_all
+  echo "Open http://localhost:5173"
+  echo "Logs are in $RUN_DIR"
+}
+
+stop_all() {
+  echo "Stopping SUUNS..."
+  stop_pid "$FRONTEND_PID"
+  stop_pid "$BACKEND_PID"
+  for port in 5173 8081; do
+    local listeners
+    listeners="$(lsof -ti "tcp:$port" 2>/dev/null || true)"
+    [ -z "$listeners" ] || kill $listeners 2>/dev/null || true
+  done
+  echo "SUUNS is stopped."
+}
+
+status_all() {
+  if lsof -ti tcp:8081 >/dev/null 2>&1; then echo "Backend: running on http://localhost:8081"; else echo "Backend: stopped"; fi
+  if lsof -ti tcp:5173 >/dev/null 2>&1; then echo "Frontend: running on http://localhost:5173"; else echo "Frontend: stopped"; fi
+}
+
+case "${1:-}" in
+  start) start_all ;;
+  stop) stop_all ;;
+  restart) stop_all; start_all ;;
+  status) status_all ;;
+  logs) tail -n 40 "$BACKEND_LOG" "$FRONTEND_LOG" ;;
+  *) echo "Usage: ./suuns {start|stop|restart|status|logs}"; exit 1 ;;
+esac

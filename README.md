@@ -2,6 +2,18 @@
 
 Web-based deterministic crisis simulation engine scaffold.
 
+## One-command local use
+
+From the project root:
+
+```bash
+./suuns start
+./suuns status
+./suuns stop
+```
+
+Use `./suuns restart` after rebuilding and `./suuns logs` to inspect recent backend and frontend output.
+
 ## Shape
 
 ```text

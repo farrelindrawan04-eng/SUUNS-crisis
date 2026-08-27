@@ -7,4 +7,5 @@ frontend/dist/
 .DS_Store
 backend/data/
 data/
+.run/
 .pnpm-store/
