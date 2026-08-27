@@ -12,7 +12,8 @@ From the project root:
 ./suuns stop
 ```
 
-Use `./suuns restart` after rebuilding and `./suuns logs` to inspect recent backend and frontend output.
+Use `./suuns restart` after rebuilding, `./suuns logs` to inspect recent backend and frontend output, and
+`./suuns history` to see the local start/stop history.
 
 ## Shape
 

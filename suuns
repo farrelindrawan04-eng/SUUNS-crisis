@@ -7,6 +7,7 @@ BACKEND_PID="$RUN_DIR/backend.pid"
 FRONTEND_PID="$RUN_DIR/frontend.pid"
 BACKEND_LOG="$RUN_DIR/backend.log"
 FRONTEND_LOG="$RUN_DIR/frontend.log"
+START_LOG="$RUN_DIR/start.log"
 BUNDLED_BIN="$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback"
 BUNDLED_NODE="$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin"
 
@@ -14,6 +15,10 @@ mkdir -p "$RUN_DIR"
 
 is_running() {
   [ -f "$1" ] && kill -0 "$(cat "$1")" 2>/dev/null
+}
+
+log_event() {
+  printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M:%S %Z')" "$1" >> "$START_LOG"
 }
 
 stop_pid() {
@@ -35,6 +40,7 @@ wait_for_port() {
 }
 
 start_all() {
+  log_event "START requested"
   if ! is_running "$BACKEND_PID"; then
     if lsof -ti tcp:8081 >/dev/null 2>&1; then
       echo "Port 8081 is already in use. Run ./suuns stop first."
@@ -69,6 +75,7 @@ start_all() {
 
   wait_for_port 8081 "Backend"
   wait_for_port 5173 "Frontend"
+  log_event "STARTED backend=http://localhost:8081 frontend=http://localhost:5173"
   status_all
   echo "Open http://localhost:5173"
   echo "Logs are in $RUN_DIR"
@@ -76,6 +83,7 @@ start_all() {
 
 stop_all() {
   echo "Stopping SUUNS..."
+  log_event "STOP requested"
   stop_pid "$FRONTEND_PID"
   stop_pid "$BACKEND_PID"
   for port in 5173 8081; do
@@ -83,6 +91,7 @@ stop_all() {
     listeners="$(lsof -ti "tcp:$port" 2>/dev/null || true)"
     [ -z "$listeners" ] || kill $listeners 2>/dev/null || true
   done
+  log_event "STOPPED"
   echo "SUUNS is stopped."
 }
 
@@ -97,5 +106,6 @@ case "${1:-}" in
   restart) stop_all; start_all ;;
   status) status_all ;;
   logs) tail -n 40 "$BACKEND_LOG" "$FRONTEND_LOG" ;;
-  *) echo "Usage: ./suuns {start|stop|restart|status|logs}"; exit 1 ;;
+  history) tail -n 50 "$START_LOG" ;;
+  *) echo "Usage: ./suuns {start|stop|restart|status|logs|history}"; exit 1 ;;
 esac
