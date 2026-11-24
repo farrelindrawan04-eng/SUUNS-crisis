@@ -105,6 +105,27 @@
     history.replaceState(null, '', url.pathname + (url.search || ''));
   }
 
+  // ORCRIST "speaks": type out each [data-type] line once per session (not again on every live refresh).
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  for (const el of $$('[data-type]')) {
+    const text = el.dataset.type;
+    const key = `typed:${text}`;
+    let seen = still;
+    try { seen = seen || sessionStorage.getItem(key) === '1'; sessionStorage.setItem(key, '1'); } catch {}
+    if (seen) continue;
+    el.textContent = '';
+    el.classList.add('typing');
+    let i = 0;
+    let booting = false; // orcrist.js shows the boot screen right after this runs; wait for it
+    try { booting = document.body.dataset.boot === 'always' || sessionStorage.getItem('orcrist-booted') !== '1'; } catch {}
+    const delay = booting ? 2100 : 250;
+    setTimeout(function step() {
+      el.textContent = text.slice(0, ++i);
+      if (i < text.length) setTimeout(step, 14 + Math.random() * 26);
+      else setTimeout(() => el.classList.remove('typing'), 1200);
+    }, delay);
+  }
+
   renderTimes();
   tick();
   setInterval(tick, 1000);

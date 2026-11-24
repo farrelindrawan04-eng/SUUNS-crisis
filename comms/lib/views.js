@@ -79,21 +79,43 @@ function nav(ctx) {
   return html`<nav class="nav">${link('/', 'Orders', p === '/' || p.startsWith('/orders'))}${link('/updates', 'Updates', p === '/updates')}</nav>`;
 }
 
-function layout(ctx, { title, body, version, state, cls = '' }) {
+// ORCRIST's colour follows the comms state: calm (cyan), alert (red/amber), dark (dim red flicker), ice (frozen).
+const moodOf = (state) => (!state ? 'calm' : !state.master.up ? 'dark' : !state.secure.up ? 'alert' : 'calm');
+
+function head(title) {
+  return html`<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#04050a">
+  <title>${title} · SUUNS Comms</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/orcrist.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>`;
+}
+
+// Data the boot screen reads: comms status and who is signed in.
+function bootData(state, user, mode = 'session') {
+  return html`data-boot="${mode}" data-master="${state && !state.master.up ? '0' : '1'}" data-secure="${state && !state.secure.up ? '0' : '1'}" data-user="${user ? user.display_name : ''}"`;
+}
+
+const brand = (size = '') => html`<a class="brand ${size}" href="/"><canvas class="brand-orb" data-orcrist="mini" aria-hidden="true"></canvas><span>SUUNS</span><span class="brand-sub">COMMS</span></a>`;
+
+function orcristLine(text) {
+  return html`<div class="orcrist-line"><canvas data-orcrist="mini" aria-hidden="true"></canvas>
+    <div><span class="eyebrow">ORCRIST · live summary</span><p data-type="${text}">${text}</p></div></div>`;
+}
+
+function layout(ctx, { title, body, version, state, cls = '', mood }) {
   const u = ctx.user;
   return html`<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${title} · SUUNS Comms</title>
-  <link rel="stylesheet" href="/static/app.css">
-  <script src="/static/app.js" defer></script>
-</head>
-<body class="${cls}" data-version="${version ?? ''}">
+${head(title)}
+<body class="${cls}" data-version="${version ?? ''}" data-mood="${mood || moodOf(state)}" ${bootData(state, u)}>
+  <div class="bg" aria-hidden="true"><i class="aurora a1"></i><i class="aurora a2"></i><i class="aurora a3"></i></div>
   <header class="topbar">
     <div class="topbar-inner">
-      <a class="brand" href="/"><span class="brand-mark"></span>SUUNS<span class="brand-sub">COMMS</span></a>
+      ${brand()}
       ${nav(ctx)}
       <div class="topbar-right">
         ${state ? html`<div class="pills">${pill('master', state)}${pill('secure', state)}</div>` : ''}
@@ -133,19 +155,30 @@ function replyForm(ctx, action, disabled, placeholder) {
 // ---------- public / shared ----------
 export function loginPage(ctx) {
   return html`<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign in · SUUNS Comms</title><link rel="stylesheet" href="/static/app.css"><script src="/static/app.js" defer></script></head>
-<body class="center-page">
-  <main class="login">
-    <div class="brand brand-lg"><span class="brand-mark"></span>SUUNS<span class="brand-sub">COMMS</span></div>
-    <p class="muted">Crisis communications desk. Sign in with the account your staff gave you.</p>
-    ${flash(ctx)}
-    <form method="post" action="/login" class="stack">
-      <label>Username<input name="username" autocomplete="username" required autofocus></label>
-      <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
-      <button class="btn btn-primary btn-block">Sign in</button>
-    </form>
-    <a class="muted small" href="/updates">View public updates →</a>
+<html lang="en">
+${head('Sign in')}
+<body class="login-page" data-mood="calm" ${bootData(null, null)}>
+  <div class="bg" aria-hidden="true"><i class="aurora a1"></i><i class="aurora a2"></i><i class="aurora a3"></i></div>
+  <main class="login-split">
+    <section class="login-orcrist">
+      <canvas data-orcrist="hero" aria-hidden="true"></canvas>
+      <div class="orcrist-caption">
+        <span class="eyebrow">ORCRIST · crisis comms intelligence</span>
+        <p data-type="Identify yourself to open a secure channel.">Identify yourself to open a secure channel.</p>
+      </div>
+    </section>
+    <section class="login-card">
+      ${brand('brand-lg')}
+      <div><p class="eyebrow">Secure access</p><h1 class="display">Sign in</h1></div>
+      <p class="muted">Use the account your staff gave you. Every session is recorded.</p>
+      ${flash(ctx)}
+      <form method="post" action="/login" class="stack">
+        <label>Username<input name="username" autocomplete="username" required autofocus></label>
+        <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+        <button class="btn btn-primary btn-block btn-lg">Open channel</button>
+      </form>
+      <a class="muted small" href="/updates">View public updates →</a>
+    </section>
   </main>
 </body></html>`;
 }
@@ -161,9 +194,9 @@ export function blackoutPage(ctx, state, version) {
   return layout(ctx, {
     title: 'MASTER COMMS offline', version, state, cls: 'blackout',
     body: html`<section class="dark-screen">
-      <div class="signal down"><i></i><i></i><i></i></div>
+      <canvas class="screen-orcrist" data-orcrist="hero" data-mood="dark" aria-hidden="true"></canvas>
       <p class="eyebrow">Signal lost</p>
-      <h1>MASTER COMMS OFFLINE</h1>
+      <h1 class="glitch" data-text="MASTER COMMS OFFLINE">MASTER COMMS OFFLINE</h1>
       <p class="muted">All information channels are dark. This screen updates by itself when comms come back.</p>
     </section>`,
   });
@@ -172,8 +205,9 @@ export function blackoutPage(ctx, state, version) {
 export function frozenPage(ctx, user, version) {
   const remaining = user.frozen_until - Date.now();
   return layout(ctx, {
-    title: 'Account frozen', version, cls: 'blackout',
+    title: 'Account frozen', version, cls: 'blackout', mood: 'ice',
     body: html`<section class="dark-screen frozen">
+      <canvas class="screen-orcrist" data-orcrist="hero" data-mood="ice" aria-hidden="true"></canvas>
       <p class="eyebrow">Account locked by staff</p>
       <h1>ACCOUNT FROZEN</h1>
       <div class="countdown" data-remaining="${remaining}">${clock(remaining)}</div>
@@ -212,13 +246,22 @@ export function projectorPage({ state, posts, version }) {
     </div>`;
   };
   const [lead, ...rest] = posts;
+  const allUp = state.master.up && state.secure.up;
   return html`<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Projector · SUUNS Comms</title><link rel="stylesheet" href="/static/app.css"><script src="/static/app.js" defer></script></head>
-<body class="projector" data-version="${version}">
+<html lang="en">
+${head('Projector')}
+<body class="projector" data-version="${version}" data-mood="${moodOf(state)}" ${bootData(state, null, 'always')}>
+  <div class="bg" aria-hidden="true"><i class="aurora a1"></i><i class="aurora a2"></i><i class="aurora a3"></i></div>
   <div class="proj">
-    <header class="proj-head"><div class="brand brand-lg"><span class="brand-mark"></span>SUUNS<span class="brand-sub">COMMS</span></div><div class="proj-clock" data-clock>--:--:--</div></header>
-    <div class="proj-tiles">${tile('master')}${tile('secure')}</div>
+    <header class="proj-head">${brand('brand-lg')}<div class="proj-clock" data-clock>--:--:--</div></header>
+    <div class="proj-tiles">
+      ${tile('master')}
+      <div class="proj-orcrist">
+        <canvas data-orcrist="hero" aria-hidden="true"></canvas>
+        <div class="proj-orcrist-label ${allUp ? 'ok' : 'bad'}">ORCRIST · ${allUp ? 'All channels nominal' : 'Comms degraded'}</div>
+      </div>
+      ${tile('secure')}
+    </div>
     <section class="proj-feed">
       ${!state.master.up ? html`<div class="proj-dark">No information available. MASTER COMMS is offline.</div>`
         : lead ? html`<article class="proj-lead"><div class="eyebrow">Latest update · ${time(lead.created_at)}</div><h2>${lead.title}</h2><p>${lead.body}</p></article>
@@ -244,9 +287,14 @@ function orderRow(o, href, forCharacter) {
 
 export function characterHome(ctx, { state, orders, posts, version }) {
   const secureDown = !state.secure.up;
+  const replies = orders.filter((o) => o.last_role === 'staff' && o.status !== 'archived').length;
+  const summary = secureDown
+    ? `Welcome back, ${ctx.user.display_name}. The secure channel is down, so orders are unavailable for now.`
+    : `Welcome back, ${ctx.user.display_name}. ${replies ? `${replies} of your orders ${replies === 1 ? 'has' : 'have'} a new reply from staff.` : 'No new replies from staff.'} ${posts.length ? `Latest update: “${posts[0].title}”.` : ''}`;
   return layout(ctx, {
     title: 'Orders', version, state,
     body: html`${pageHead('Delegate desk', ctx.user.display_name)}
+    ${orcristLine(summary.trim())}
     <div class="grid-main">
       <section class="panel">
         <div class="panel-head"><h2>Your orders</h2><span class="muted">${secureDown ? '' : `${orders.length} total`}</span></div>
@@ -309,9 +357,13 @@ export function staffCommsPage(ctx, { state, version }) {
 
 export function staffHome(ctx, { state, tab, counts, orders, version }) {
   const tabs = [['open', 'Open'], ['mine', 'Mine'], ['claimed', 'All claimed'], ['actioned', 'Actioned'], ['archived', 'Archived']];
+  const channels = state.master.up && state.secure.up ? 'All channels nominal.'
+    : !state.master.up ? 'MASTER COMMS is offline: delegates are blacked out.' : 'SECURE COMMS is offline: delegates cannot reach orders.';
+  const summary = `${counts.open} open ${counts.open === 1 ? 'order' : 'orders'}, ${counts.claimed} in progress, ${counts.mine} assigned to you. ${channels}`;
   return layout(ctx, {
     title: 'Orders', version, state,
     body: html`${pageHead('Staff desk', 'Order queue')}
+      ${orcristLine(summary)}
       <div class="comms-board">${commsTile(ctx, 'master', state)}${commsTile(ctx, 'secure', state)}</div>
       <section class="panel">
         <nav class="tabs">${tabs.map(([key, label]) => html`<a href="/staff?tab=${key}" class="${tab === key ? 'active' : ''}">${label}<span class="count">${counts[key]}</span></a>`)}</nav>
@@ -326,7 +378,7 @@ export function staffOrderPage(ctx, { state, order, thread: messages, version })
   const actions = [];
   if (order.status === 'open') actions.push(op('claim', 'Claim', 'btn btn-primary'));
   if (order.status === 'claimed' && order.claimed_by !== me.id) actions.push(op('claim', `Take over from ${order.claimed_name}`, 'btn'));
-  if (order.status === 'open' || order.status === 'claimed') actions.push(op('action', 'Mark actioned', 'btn btn-ok'));
+  if (order.status === 'open' || order.status === 'claimed') actions.push(op('action', 'Mark actioned', 'btn'));
   if (order.status === 'claimed') actions.push(op('unclaim', 'Release to queue', 'btn btn-ghost'));
   if (order.status !== 'archived') actions.push(op('archive', 'Archive', 'btn btn-ghost', 'Archive this order? Replies will close until it is reopened.'));
   if (order.status === 'actioned' || order.status === 'archived') actions.push(op('reopen', 'Reopen', 'btn'));
@@ -398,7 +450,7 @@ export function accountsPage(ctx, { state, users, version, now }) {
           : post('freeze', html`<input name="minutes" type="number" min="1" max="1440" value="10" aria-label="Minutes" class="w-num"><span class="muted small">min</span><input name="reason" maxlength="200" placeholder="Reason (shown to them)" class="w-reason"><button class="btn btn-sm">Freeze</button>`)) : ''}
         <details class="more"><summary class="btn btn-ghost btn-sm">More</summary><div class="more-body">
           ${post('password', html`<input name="password" minlength="8" required placeholder="New password" autocomplete="new-password"><button type="button" class="btn btn-ghost btn-sm" data-genpw>Generate</button><button class="btn btn-sm">Reset</button>`)}
-          ${self ? '' : u.active ? post('deactivate', html`<button class="btn btn-danger btn-sm">Deactivate</button>`, `Deactivate ${u.display_name}? They will be signed out.`)
+          ${self ? '' : u.active ? post('deactivate', html`<button class="btn btn-sm">Deactivate</button>`, `Deactivate ${u.display_name}? They will be signed out.`)
             : post('reactivate', html`<button class="btn btn-sm">Reactivate</button>`)}
         </div></details>
       </td>

@@ -23,6 +23,7 @@ const go = (location, query = {}) => {
 const STATIC = {
   '/static/app.css': ['text/css; charset=utf-8', fs.readFileSync(path.join(ROOT, 'public/app.css'))],
   '/static/app.js': ['text/javascript; charset=utf-8', fs.readFileSync(path.join(ROOT, 'public/app.js'))],
+  '/static/orcrist.js': ['text/javascript; charset=utf-8', fs.readFileSync(path.join(ROOT, 'public/orcrist.js'))],
 };
 
 export function createApp(db) {
@@ -91,6 +92,10 @@ export function createApp(db) {
 
   // ---------- auth ----------
   const attempts = new Map(); // ip -> { n, since }
+  // Drop stale entries so a flood of addresses can't grow this map forever.
+  setInterval(() => {
+    for (const [ip, a] of attempts) if (now() - a.since > 15 * MIN) attempts.delete(ip);
+  }, 5 * MIN).unref();
   function rateLimited(ip) {
     const a = attempts.get(ip);
     if (a && now() - a.since > 15 * MIN) { attempts.delete(ip); return false; }
@@ -115,7 +120,9 @@ export function createApp(db) {
     const user = db.prepare('SELECT * FROM users WHERE username = ? AND active = 1').get(username);
     if (!checkPassword(password, user ? user.password_hash : null)) {
       noteFailure(ip);
-      tx(db, () => audit(db, null, 'auth.login_failed', null, { username: username.slice(0, 64), ip }));
+      // Only name real accounts: an unknown "username" is often a password typed into the wrong box.
+      const who = user ? { username: user.username } : { unknownUsername: true };
+      tx(db, () => audit(db, null, 'auth.login_failed', user ? `user:${user.id}` : null, { ...who, ip }));
       throw go('/login', { e: 'login' });
     }
     attempts.delete(ip);
@@ -442,6 +449,7 @@ export function createApp(db) {
     const url = new URL(req.url, 'http://local');
     const ctx = { req, res, url, query: url.searchParams, params: {}, user: null };
     securityHeaders(res);
+    if (isHttps(req)) res.setHeader('Strict-Transport-Security', 'max-age=31536000'); // browsers stay on HTTPS
     try {
       if (req.method === 'GET' && STATIC[url.pathname]) {
         const [type, body] = STATIC[url.pathname];
@@ -502,12 +510,18 @@ function parseCookies(header = '') {
 }
 
 function cookie(req, name, value, maxAgeSeconds) {
-  const secure = process.env.COOKIE_SECURE === '1' || (TRUST_PROXY && req.headers['x-forwarded-proto'] === 'https');
+  const secure = process.env.COOKIE_SECURE === '1' || isHttps(req);
   return `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(maxAgeSeconds)}${secure ? '; Secure' : ''}`;
 }
 
+function isHttps(req) {
+  return TRUST_PROXY && req.headers['x-forwarded-proto'] === 'https';
+}
+
 function clientIp(req) {
-  if (TRUST_PROXY && req.headers['x-forwarded-for']) return req.headers['x-forwarded-for'].split(',')[0].trim();
+  // Use the LAST address: it's the one our proxy added. Earlier entries are whatever the client sent,
+  // so trusting the first one would let an attacker fake a new IP per guess and dodge the rate limit.
+  if (TRUST_PROXY && req.headers['x-forwarded-for']) return req.headers['x-forwarded-for'].split(',').pop().trim();
   return req.socket.remoteAddress || 'unknown';
 }
 
@@ -555,6 +569,11 @@ export function bootstrap(db) {
     console.warn('No staff accounts yet. Set BOOTSTRAP_USERNAME and BOOTSTRAP_PASSWORD (8+ chars), or run: npm run create-user');
     return;
   }
+  // If that username exists but was deactivated, don't crash-loop on the unique constraint.
+  if (db.prepare('SELECT 1 FROM users WHERE username = ?').get(username)) {
+    console.warn(`No active staff, and "${username}" already exists (deactivated?). Use npm run create-user with a new username.`);
+    return;
+  }
   tx(db, () => {
     const id = Number(db.prepare("INSERT INTO users (username, display_name, role, password_hash, created_at) VALUES (?, ?, 'staff', ?, ?)")
       .run(username, name || username, hashPassword(password), Date.now()).lastInsertRowid);
@@ -565,7 +584,9 @@ export function bootstrap(db) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const db = openDb(process.env.DB_FILE || path.join(ROOT, 'data', 'comms.db'));
-  db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now());
+  const purgeSessions = () => db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now());
+  purgeSessions();
+  setInterval(purgeSessions, 60 * MIN).unref();
   bootstrap(db);
   const port = Number(process.env.PORT || 3000);
   http.createServer(createApp(db)).listen(port, () => console.log(`SUUNS Comms on http://localhost:${port}`));
