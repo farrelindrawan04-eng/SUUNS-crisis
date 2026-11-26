@@ -562,11 +562,34 @@ function readBody(req) {
 
 // First boot: create a staff account from env vars if there is no staff yet.
 export function bootstrap(db) {
-  const { BOOTSTRAP_USERNAME: username, BOOTSTRAP_PASSWORD: password, BOOTSTRAP_NAME: name } = process.env;
-  const hasStaff = db.prepare("SELECT 1 FROM users WHERE role = 'staff' AND active = 1").get();
-  if (hasStaff) return;
-  if (!username || !password || password.length < MIN_PASSWORD) {
-    console.warn('No staff accounts yet. Set BOOTSTRAP_USERNAME and BOOTSTRAP_PASSWORD (8+ chars), or run: npm run create-user');
+  // Accept the old app's CLEC_MASTER_* names too: Railway suggests them from the repo's .env.example.
+  // Trim whitespace and one pair of surrounding quotes, which dashboards store literally if typed.
+  const env = (...names) => {
+    for (const n of names) {
+      const v = process.env[n];
+      if (v != null && v.trim() !== '') return { name: n, value: v.trim().replace(/^(['"])(.*)\1$/, '$2') };
+    }
+    return { name: names[0], value: '' };
+  };
+  const u = env('BOOTSTRAP_USERNAME', 'CLEC_MASTER_USERNAME');
+  const p = env('BOOTSTRAP_PASSWORD', 'CLEC_MASTER_PASSWORD');
+  const n = env('BOOTSTRAP_NAME', 'CLEC_MASTER_DISPLAY_NAME');
+  const [username, password, name] = [u.value, p.value, n.value];
+
+  const staffCount = db.prepare("SELECT COUNT(*) AS c FROM users WHERE role = 'staff' AND active = 1").get().c;
+  if (staffCount > 0) {
+    console.log(`Bootstrap: skipped, ${staffCount} active staff account(s) already exist.`);
+    return;
+  }
+  // Explain exactly what is missing, without ever printing the password.
+  const problems = [];
+  if (!username) problems.push('no username (set BOOTSTRAP_USERNAME)');
+  else if (!USERNAME_RE.test(username)) problems.push(`username "${username}" must be 2–32 letters, numbers, dots, dashes or underscores`);
+  if (!password) problems.push('no password (set BOOTSTRAP_PASSWORD)');
+  else if (password.length < MIN_PASSWORD) problems.push(`password from ${p.name} is ${password.length} characters; it needs at least ${MIN_PASSWORD}`);
+  else if (/replace-with|change-me/i.test(password)) problems.push(`password from ${p.name} is still the example placeholder; choose a real one`);
+  if (problems.length) {
+    console.warn(`Bootstrap: no staff account created: ${problems.join('; ')}.`);
     return;
   }
   // If that username exists but was deactivated, don't crash-loop on the unique constraint.
@@ -579,7 +602,7 @@ export function bootstrap(db) {
       .run(username, name || username, hashPassword(password), Date.now()).lastInsertRowid);
     audit(db, null, 'system.bootstrap', `user:${id}`, { username });
   });
-  console.log(`Created first staff account "${username}".`);
+  console.log(`Created first staff account "${username}" (from ${u.name} / ${p.name}). Sign in with that username and password.`);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
