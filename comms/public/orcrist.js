@@ -201,6 +201,8 @@
   function loop(now) {
     pointer.x += (pointer.tx - pointer.x) * 0.04;
     pointer.y += (pointer.ty - pointer.y) * 0.04;
+    // Pages swap content in place, so forget holograms whose canvas has left the page.
+    for (let i = orcrists.length - 1; i >= 0; i--) if (!orcrists[i].canvas.isConnected) orcrists.splice(i, 1);
     for (const o of orcrists) o.draw(now);
     if (!REDUCED) requestAnimationFrame(loop);
   }
@@ -255,6 +257,8 @@
     addEventListener('keydown', finish, { once: true });
     setTimeout(finish, REDUCED ? 600 : 2300);
   }
+
+  window.Orcrist = { mount }; // app.js mounts holograms in content it swaps in
 
   document.addEventListener('DOMContentLoaded', () => {
     mount();

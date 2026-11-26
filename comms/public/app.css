@@ -460,3 +460,10 @@ body.projector { overflow: hidden; }
   .more-body { left: 0; right: auto; min-width: 270px; }
   .login-card { padding: 26px; }
 }
+
+/* ---------- in-place navigation ---------- */
+.wrap.swapped { animation: none; }
+/* Thin loading line under the top bar while a page swap is in flight. */
+html.is-loading .topbar::after { height: 2px; background: linear-gradient(90deg, transparent, #fff, transparent); background-size: 40% 100%; background-repeat: no-repeat; animation: loading-line 0.9s linear infinite; }
+@keyframes loading-line { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+html.is-loading main.wrap { opacity: .85; transition: opacity .15s; }
